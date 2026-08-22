@@ -1,0 +1,28 @@
+# Python virtual environment
+.venv/
+venv/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+
+# Jupyter temporary files
+.ipynb_checkpoints/
+
+# VS Code personal settings
+.vscode/
+
+# Dataset files
+data/raw/*
+data/processed/*
+*.pkl
+
+# Trained model files
+*.pt
+*.pth
+*.joblib
+
+# Operating-system files
+.DS_Store
+Thumbs.db
