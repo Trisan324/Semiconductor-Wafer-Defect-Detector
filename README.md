@@ -14,7 +14,7 @@ The objective is to develop and evaluate an image-classification model that acce
 
 The project uses the WM-811K Wafer Map dataset, which contains wafer maps collected from semiconductor fabrication processes.
 
-Dataset source:
+Dataset sources:
 
 * [WM-811K Wafer Map dataset](https://www.kaggle.com/datasets/qingyi/wm811k-wafer-map)
 * [Original WM-811K publication](https://doi.org/10.1109/TSM.2014.2364237)
@@ -35,48 +35,82 @@ The dataset is not included in this repository because of its size. Each group m
 * Seaborn
 * Git and GitHub
 
-Model training will primarily be performed locally on a GPU-enabled computer.
+Model training will be performed locally. GPU acceleration will be used where supported, with CPU training available as a fallback. The primary training computer uses an AMD Radeon RX 6600 through PyTorch DirectML.
 
 ## Repository Structure
 
 ```text
 data/
-├── raw/             Original WM-811K dataset
-└── processed/       Cleaned and preprocessed data
+├── raw/                         Original WM-811K dataset
+└── processed/                   Cleaned and preprocessed data
 
-notebooks/           Data exploration and model experiments
-src/                 Reusable Python source code
-models/              Saved model files
-results/             Evaluation results, graphs and confusion matrices
+notebooks/                       Data exploration and model experiments
+src/                             Reusable Python source code
+models/                          Saved model files
+results/                         Evaluation results, graphs and confusion matrices
 
-README.md            Project information and setup instructions
-requirements.txt     Required Python packages
-.gitignore           Files excluded from version control
+README.md                        Project information and setup instructions
+requirements.txt                 Shared Python dependencies
+requirements-amd-directml.txt    AMD DirectML environment
+.gitignore                       Files excluded from version control
 ```
 
 ## Environment Setup
 
-Clone the repository:
+### Clone the Repository
 
 ```bash
 git clone https://github.com/YOUR-USERNAME/ENEL4AI-Wafer-Defect-Detection.git
 cd ENEL4AI-Wafer-Defect-Detection
 ```
 
-Create a Python virtual environment on Windows:
+### Create the Python Environment
 
-```bat
-python -m venv .venv
-.venv\Scripts\activate
+Python 3.11 is recommended for compatibility.
+
+On Windows PowerShell:
+
+```powershell
+py -3.11 -m venv .venv
+.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
 ```
 
-Install the core dependencies:
+### Install the Shared Dependencies
 
-```bat
-python -m pip install --upgrade pip
+For a standard CPU environment:
+
+```powershell
 pip install -r requirements.txt
 ```
 
-PyTorch must be installed separately using the appropriate command for the computer’s operating system and GPU:
+### AMD GPU Setup on Windows
+
+The primary training computer uses an AMD Radeon RX 6600 through Microsoft DirectML.
+
+Install the shared packages and DirectML dependencies using:
+
+```powershell
+pip install -r requirements-amd-directml.txt
+```
+
+Test the DirectML device:
+
+```powershell
+python -c "import torch, torch_directml; device=torch_directml.device(); x=torch.tensor([1.0]).to(device); print('Device:', device); print('Result:', (x+2).item())"
+```
+
+A successful result should resemble:
+
+```text
+Device: privateuseone:0
+Result: 3.0
+```
+
+DirectML does not use NVIDIA CUDA. Therefore, `torch.cuda.is_available()` may return `False` even when the AMD GPU is working correctly.
+
+### Other GPU Configurations
+
+Members using NVIDIA GPUs or other operating systems should install PyTorch using the official installation selector:
 
 * [PyTorch installation selector](https://pytorch.org/get-started/locally/)
