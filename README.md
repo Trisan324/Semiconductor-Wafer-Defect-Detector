@@ -1,4 +1,4 @@
-# ENEL4AI Semiconductor Wafer Defect Detection
+# Semiconductor-Wafer-Defect-Detection
 
 ## Project Overview
 
@@ -60,8 +60,8 @@ requirements-amd-directml.txt    AMD DirectML environment
 ### Clone the Repository
 
 ```bash
-git clone https://github.com/YOUR-USERNAME/ENEL4AI-Wafer-Defect-Detection.git
-cd ENEL4AI-Wafer-Defect-Detection
+git clone https://github.com/YOUR-USERNAME/Semiconductor-Wafer-Defect-Detection.git
+cd Semiconductor-Wafer-Defect-Detection
 ```
 
 ### Create the Python Environment
