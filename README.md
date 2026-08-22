@@ -1,4 +1,4 @@
-# Semiconductor-Wafer-Defect-Detection
+# Semiconductor Wafer Defect Detection
 
 ## Project Overview
 
@@ -16,24 +16,24 @@ The project uses the WM-811K Wafer Map dataset, which contains wafer maps collec
 
 Dataset sources:
 
-* [WM-811K Wafer Map dataset](https://www.kaggle.com/datasets/qingyi/wm811k-wafer-map)
-* [Original WM-811K publication](https://doi.org/10.1109/TSM.2014.2364237)
+- [WM-811K Wafer Map dataset](https://www.kaggle.com/datasets/qingyi/wm811k-wafer-map)
+- [Original WM-811K publication](https://doi.org/10.1109/TSM.2014.2364237)
 
 The dataset is not included in this repository because of its size. Each group member must download it separately and place it in the local `data/raw/` directory.
 
 ## Technology Stack
 
-* Python
-* PyTorch
-* Visual Studio Code
-* Jupyter Notebook
-* NumPy
-* pandas
-* scikit-learn
-* OpenCV
-* Matplotlib
-* Seaborn
-* Git and GitHub
+- Python
+- PyTorch
+- Visual Studio Code
+- Jupyter Notebook
+- NumPy
+- pandas
+- scikit-learn
+- OpenCV
+- Matplotlib
+- Seaborn
+- Git and GitHub
 
 Model training will be performed locally. GPU acceleration will be used where supported, with CPU training available as a fallback. The primary training computer uses an AMD Radeon RX 6600 through PyTorch DirectML.
 
@@ -59,16 +59,19 @@ requirements-amd-directml.txt    AMD DirectML environment
 
 ### Clone the Repository
 
-```bash
-git clone https://github.com/YOUR-USERNAME/Semiconductor-Wafer-Defect-Detection.git
-cd Semiconductor-Wafer-Defect-Detection
-```
+The repository can be cloned using GitHub Desktop:
+
+1. Open GitHub Desktop.
+2. Select **File → Clone repository**.
+3. Select `Semiconductor-Wafer-Defect-Detection`.
+4. Choose a local folder.
+5. Click **Clone**.
 
 ### Create the Python Environment
 
 Python 3.11 is recommended for compatibility.
 
-On Windows PowerShell:
+Open Windows PowerShell inside the repository and run:
 
 ```powershell
 py -3.11 -m venv .venv
@@ -88,7 +91,7 @@ pip install -r requirements.txt
 
 The primary training computer uses an AMD Radeon RX 6600 through Microsoft DirectML.
 
-Install the shared packages and DirectML dependencies using:
+Install the shared packages and DirectML dependencies:
 
 ```powershell
 pip install -r requirements-amd-directml.txt
@@ -113,4 +116,4 @@ DirectML does not use NVIDIA CUDA. Therefore, `torch.cuda.is_available()` may re
 
 Members using NVIDIA GPUs or other operating systems should install PyTorch using the official installation selector:
 
-* [PyTorch installation selector](https://pytorch.org/get-started/locally/)
+- [PyTorch installation selector](https://pytorch.org/get-started/locally/)
