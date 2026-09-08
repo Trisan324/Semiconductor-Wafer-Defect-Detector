@@ -1,13 +1,3 @@
-"""
-CNN training script for wafer-defect classification.
-
-Building this up step by step:
-  - Step 2 (this part): load the .npz data into PyTorch DataLoaders
-  - Step 3 (next): define the CNN model
-  - Step 4: training loop
-  - Step 5: save the best checkpoint + training logs
-"""
-
 from pathlib import Path
 
 import numpy as np
@@ -17,13 +7,7 @@ import torch_directml
 from torch.utils.data import TensorDataset, DataLoader
 from sklearn.utils.class_weight import compute_class_weight
 
-# ---------------------------------------------------------------------------
-# Step 2: Load data
-# ---------------------------------------------------------------------------
-
-# Resolve paths relative to the project root, not the current working
-# directory -- this way it doesn't matter whether you run this via the
-# terminal from the project root, from src/, or via VS Code's play button.
+# paths resolve from the project root so it doesn't matter where this is run from
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 NPZ_PATH = PROJECT_ROOT / "data" / "processed" / "processed_wafer_dataset.npz"
 BATCH_SIZE = 32
@@ -53,9 +37,7 @@ train_loader = make_loader(X_train, y_train, shuffle=True)
 val_loader = make_loader(X_val, y_val, shuffle=False)
 test_loader = make_loader(X_test, y_test, shuffle=False)
 
-# ---------------------------------------------------------------------------
-# Step 3: The model
-# ---------------------------------------------------------------------------
+# model
 
 NUM_CLASSES = 6
 DROPOUT_RATE = 0.3
@@ -65,7 +47,7 @@ class CompactCNN(nn.Module):
     def __init__(self, num_classes=NUM_CLASSES, dropout_rate=DROPOUT_RATE):
         super().__init__()
 
-        # Three conv blocks, filters increasing 32 -> 64 -> 128, each halving
+        # three conv blocks, filters increasing 32 -> 64 -> 128, each halving
         # the spatial size via max pooling (32x32 -> 16x16 -> 8x8 -> 4x4)
         self.conv_block1 = nn.Sequential(
             nn.Conv2d(in_channels=3, out_channels=32, kernel_size=3, padding=1),
@@ -83,9 +65,8 @@ class CompactCNN(nn.Module):
             nn.MaxPool2d(kernel_size=2),
         )
 
-        # Global average pooling collapses each of the 128 feature maps down
-        # to a single number, giving a 128-length vector regardless of the
-        # spatial size going in -- keeps the classifier head small.
+        # global average pooling collapses each feature map to one number,
+        # giving a fixed length vector regardless of spatial size
         self.global_avg_pool = nn.AdaptiveAvgPool2d(output_size=1)
 
         self.classifier = nn.Sequential(
@@ -102,12 +83,10 @@ class CompactCNN(nn.Module):
         x = self.conv_block3(x)
         x = self.global_avg_pool(x)
         x = self.classifier(x)
-        return x  # raw class scores (logits) -- no softmax here, the loss function applies it
+        return x  # raw scores, softmax is applied by the loss function
 
 
-# ---------------------------------------------------------------------------
-# Step 4: Training loop
-# ---------------------------------------------------------------------------
+# training loop
 
 DEVICE = torch_directml.device()
 LEARNING_RATE = 0.001
@@ -115,10 +94,7 @@ EPOCHS = 30
 
 
 def get_class_weights(y_onehot):
-    # Class weights compensate for the residual imbalance in the training
-    # set (Donut/Scratch have fewer samples than the other 4 classes).
-    # 'balanced' weights each class inversely proportional to how often it
-    # appears, so rarer classes count for more in the loss.
+    # balanced class weights so Donut and Scratch count for more in the loss
     y_indices = y_onehot.argmax(axis=1)
     weights = compute_class_weight(
         class_weight="balanced",
@@ -129,7 +105,7 @@ def get_class_weights(y_onehot):
 
 
 def run_epoch(model, loader, criterion, optimizer=None):
-    """One pass over `loader`. Pass optimizer=None for evaluation (no weight updates)."""
+    # one pass over loader. pass optimizer=None to evaluate without updating weights
     is_training = optimizer is not None
     model.train() if is_training else model.eval()
 
@@ -159,9 +135,7 @@ def run_epoch(model, loader, criterion, optimizer=None):
     return avg_loss, accuracy
 
 
-# ---------------------------------------------------------------------------
-# Step 5: Save the best checkpoint + training logs
-# ---------------------------------------------------------------------------
+# save the best checkpoint and training logs
 
 MODEL_DIR = PROJECT_ROOT / "models"
 RESULTS_DIR = PROJECT_ROOT / "results"
@@ -196,9 +170,8 @@ if __name__ == "__main__":
 
         log_rows.append(f"{epoch},{train_loss:.4f},{train_acc:.4f},{val_loss:.4f},{val_acc:.4f}")
 
-        # Save the model only when it beats the best validation accuracy seen
-        # so far -- this way, even if later epochs overfit, CHECKPOINT_PATH
-        # always holds the best-performing version, not just the last one.
+        # save only when validation accuracy improves so the checkpoint holds
+        # the best epoch, not just the last one
         if val_acc > best_val_acc:
             best_val_acc = val_acc
             torch.save(model.state_dict(), CHECKPOINT_PATH)

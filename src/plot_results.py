@@ -1,20 +1,3 @@
-"""Generate report-ready plots for the semiconductor wafer defect project.
-
-Inputs (project_root/results):
-  training_log.csv
-  evaluation_metrics.csv
-  confusion_matrix.csv
-
-Outputs (project_root/results/figures):
-  training_loss_curve.png
-  training_accuracy_curve.png
-  confusion_matrix_heatmap.png
-  per_class_f1_score.png
-
-This script is Teammate B's visualization code. It does not modify the
-model, checkpoint, evaluation script, or Teammate A's CSV outputs.
-"""
-
 from pathlib import Path
 import numpy as np
 import pandas as pd
