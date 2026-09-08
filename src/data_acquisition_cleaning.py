@@ -1,20 +1,10 @@
-"""
-WM-811K Wafer Map Dataset — Data Acquisition, Cleaning & Preprocessing
-Phase 1 script.
-
-Sections A1-A10 = information gathering (inspect the raw data, record findings).
-Sections B1-B13 = actions performed on the data (clean, filter, transform, save).
-
-All console output produced when running this script is also written to
-RESULTS_PATH (a plain text file) via the _Tee helper below.
-"""
-
 import os
 import sys
 import time
 import types
 import importlib
 import contextlib
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -23,14 +13,16 @@ import pandas.compat.pickle_compat as pickle_compat
 from sklearn.preprocessing import LabelEncoder
 from sklearn.model_selection import train_test_split
 
-
-DATA_PATH = "LSWMD.pkl"
-RESULTS_PATH = "phase1_results.txt"
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+DATA_PATH = PROJECT_ROOT / "data" / "raw" / "LSWMD.pkl"
+PROCESSED_DATA_DIR = PROJECT_ROOT / "data" / "processed"
+RESULTS_DIR = PROJECT_ROOT / "results"
+RESULTS_PATH = RESULTS_DIR / "phase1_results.txt"
 
 
 class _Tee:
-    """Writes to multiple streams at once (used to mirror print() output to a file)."""
-
+    # mirrors print() output to multiple streams at once, used to also write
+    # everything to RESULTS_PATH while it prints to the console
     def __init__(self, *streams):
         self.streams = streams
 
@@ -44,15 +36,10 @@ class _Tee:
 
 
 def _register_legacy_pandas_shims() -> None:
-    """
-    LSWMD.pkl was pickled with a very old pandas (Python 2 era) that stored
-    index classes under 'pandas.indexes.*', which no longer exists in
-    modern pandas (that code now lives under 'pandas.core.indexes.*', and
-    classes like Int64Index were removed entirely in pandas 2.0). This
-    registers sys.modules aliases and a couple of class aliases so the
-    old pickle can still be unpickled with a current pandas install.
-    Safe to call multiple times.
-    """
+    # LSWMD.pkl was pickled with a very old pandas that stored index classes
+    # under pandas.indexes, which was moved to pandas.core.indexes in modern
+    # pandas (and some classes like Int64Index were removed entirely in 2.0).
+    # This aliases the old module paths so the pickle can still load.
     if 'pandas.indexes' in sys.modules:
         return  # already registered
 
@@ -72,20 +59,7 @@ def _register_legacy_pandas_shims() -> None:
             setattr(real_base, name, real_base.Index)
 
 
-# ======================================================================
-# SECTION B1 — LOAD (implemented: opens and reads LSWMD.pkl)
-# ======================================================================
-
 def load_data(path: str = DATA_PATH) -> pd.DataFrame:
-    """
-    Open and read the WM-811K pickle file into a pandas DataFrame.
-    Also prints basic load info (file size, load time, resulting shape)
-    so this doubles as the first half of the A1 file-level check.
-
-    Uses a legacy-pandas compatibility shim + latin1 string decoding,
-    since LSWMD.pkl was pickled with a Python 2 / old-pandas stack and
-    will not load with plain pd.read_pickle() on a modern pandas version.
-    """
     if not os.path.exists(path):
         raise FileNotFoundError(
             f"Could not find '{path}'. Make sure LSWMD.pkl is in the "
@@ -100,9 +74,8 @@ def load_data(path: str = DATA_PATH) -> pd.DataFrame:
     try:
         df = pd.read_pickle(path)
     except (AttributeError, ImportError, ModuleNotFoundError, UnicodeDecodeError, TypeError):
-        # Modern pandas' own fallback (pickle_compat) still assumes ASCII
-        # strings, which breaks on this Python-2-era file. Fall back to
-        # driving pickle_compat directly with encoding="latin1".
+        # modern pandas' own fallback still assumes ASCII strings, which breaks
+        # on this Python 2 era file, so drive pickle_compat directly with latin1
         with open(path, "rb") as f:
             df = pickle_compat.Unpickler(f, encoding="latin1").load()
     elapsed = time.time() - start
@@ -117,31 +90,16 @@ def load_data(path: str = DATA_PATH) -> pd.DataFrame:
 
 
 def _extract_nested_string(cell) -> "str | None":
-    """
-    WM-811K stores failureType and trianTestLabel as nested numpy arrays
-    (e.g. array([['Center']], dtype='<U6')) rather than plain strings, and
-    as an empty array (size 0) for unlabeled rows. This unwraps a single
-    cell into a plain string, or None if the cell is empty.
-    """
+    # failureType and trianTestLabel are stored as nested arrays, e.g.
+    # array([['Center']]), or an empty array for unlabeled rows. This unwraps
+    # a single cell to a plain string, or None if it's empty.
     arr = np.asarray(cell)
     if arr.size == 0:
         return None
     return str(arr.reshape(-1)[0])
 
 
-# ======================================================================
-# SECTION A — INFORMATION TO GATHER FROM THE RAW DATA
-# ======================================================================
-
-# ----------------------------------------------------------------------
-# A1. FILE-LEVEL (remaining part — most of this is already printed by
-#     load_data() above; use this if you want a separate, reusable check)
-#   - File size, format, load time
-#   - Resulting DataFrame shape (rows x columns)
-# ----------------------------------------------------------------------
-
 def inspect_file_info(df: pd.DataFrame) -> None:
-    """Print/record DataFrame shape and column list."""
     print("A1. FILE-LEVEL INFO")
     print(f"  Shape:          {df.shape[0]} rows x {df.shape[1]} columns")
     print(f"  Columns:        {list(df.columns)}")
@@ -149,13 +107,7 @@ def inspect_file_info(df: pd.DataFrame) -> None:
     print(f"  In-memory size: {mem_mb:.1f} MB (approx, deep)")
 
 
-# ----------------------------------------------------------------------
-# A2. SCHEMA
-#   - Column names and dtypes
-# ----------------------------------------------------------------------
-
 def inspect_schema(df: pd.DataFrame) -> None:
-    """Print column names and dtypes."""
     print("A2. SCHEMA")
     for col in df.columns:
         sample = df[col].iloc[0]
@@ -163,15 +115,7 @@ def inspect_schema(df: pd.DataFrame) -> None:
               f"sample_cell_type={type(sample).__name__}")
 
 
-# ----------------------------------------------------------------------
-# A3. waferMap FIELD
-#   - Confirm each row is a 2D numpy array
-#   - Distribution of array shapes (height x width) across all rows
-#   - Set of unique pixel/cell values used (expect 0/1/2)
-# ----------------------------------------------------------------------
-
 def inspect_wafer_map_field(df: pd.DataFrame, value_sample_size: int = 5000) -> None:
-    """Check waferMap array types, shape distribution, and value set."""
     print("A3. waferMap FIELD")
 
     all_ndarray = df['waferMap'].apply(lambda m: isinstance(m, np.ndarray)).all()
@@ -189,7 +133,7 @@ def inspect_wafer_map_field(df: pd.DataFrame, value_sample_size: int = 5000) -> 
     print(f"  Height range: {heights.min()}-{heights.max()} (mean {heights.mean():.1f})")
     print(f"  Width range:  {widths.min()}-{widths.max()} (mean {widths.mean():.1f})")
 
-    # Full value scan is slow across 811K arrays, so sample for speed.
+    # full value scan is slow across 811K arrays, so sample for speed
     sample_size = min(value_sample_size, len(df))
     sample_idx = np.random.choice(len(df), size=sample_size, replace=False)
     seen_values = set()
@@ -198,15 +142,7 @@ def inspect_wafer_map_field(df: pd.DataFrame, value_sample_size: int = 5000) -> 
     print(f"  Unique pixel values (sampled {sample_size} wafers): {sorted(seen_values)}")
 
 
-# ----------------------------------------------------------------------
-# A4. failureType FIELD (the label)
-#   - Raw storage format (likely a nested array, e.g. array([['Center']]))
-#   - Which rows are labeled vs unlabeled
-#   - Full list of distinct label values and exact spelling/casing
-# ----------------------------------------------------------------------
-
 def inspect_failure_type_field(df: pd.DataFrame) -> None:
-    """Inspect raw failureType format and list distinct label values."""
     print("A4. failureType FIELD")
 
     sample = df['failureType'].iloc[0]
@@ -222,17 +158,10 @@ def inspect_failure_type_field(df: pd.DataFrame) -> None:
     print(f"  Distinct labels ({len(distinct)}): {distinct}")
 
 
-# ----------------------------------------------------------------------
-# A5. trainTestLabel FIELD
-#   - Raw storage format (same nested-array issue as failureType)
-#   - Distribution of Training vs Test values
-# ----------------------------------------------------------------------
-
 def inspect_train_test_label_field(df: pd.DataFrame) -> None:
-    """Inspect raw trainTestLabel format and its value distribution."""
     print("A5. trianTestLabel FIELD")
 
-    # Note: the original dataset misspells this column 'trianTestLabel'.
+    # the original dataset misspells this column 'trianTestLabel'
     col = 'trianTestLabel' if 'trianTestLabel' in df.columns else 'trainTestLabel'
     sample = df[col].iloc[0]
     print(f"  Column name in file: '{col}'")
@@ -243,14 +172,7 @@ def inspect_train_test_label_field(df: pd.DataFrame) -> None:
     print(values.value_counts(dropna=False).to_string())
 
 
-# ----------------------------------------------------------------------
-# A6. CLASS BALANCE
-#   - Count and percentage per failureType class (labeled subset only)
-#   - Imbalance ratio between largest and smallest class you plan to use
-# ----------------------------------------------------------------------
-
 def inspect_class_balance(df: pd.DataFrame) -> pd.DataFrame:
-    """Return a table of class counts/percentages for failureType."""
     print("A6. CLASS BALANCE (labeled subset)")
 
     labels = df['failureType'].apply(_extract_nested_string).dropna()
@@ -266,13 +188,7 @@ def inspect_class_balance(df: pd.DataFrame) -> pd.DataFrame:
     return balance
 
 
-# ----------------------------------------------------------------------
-# A7. dieSize FIELD
-#   - Distribution (min / max / mean / median)
-# ----------------------------------------------------------------------
-
 def inspect_die_size_field(df: pd.DataFrame) -> None:
-    """Print min/max/mean/median of dieSize."""
     print("A7. dieSize FIELD")
     stats = df['dieSize'].describe()
     print(f"  min:    {stats['min']:.0f}")
@@ -282,14 +198,7 @@ def inspect_die_size_field(df: pd.DataFrame) -> None:
     print(f"  std:    {stats['std']:.1f}")
 
 
-# ----------------------------------------------------------------------
-# A8. IDENTIFIERS (lotName, waferIndex)
-#   - Check for duplicate (lotName, waferIndex) combinations
-#   - Number of unique lots and wafers per lot
-# ----------------------------------------------------------------------
-
 def inspect_identifiers(df: pd.DataFrame) -> None:
-    """Check for duplicate (lotName, waferIndex) pairs and lot sizes."""
     print("A8. IDENTIFIERS (lotName, waferIndex)")
 
     dup_mask = df.duplicated(subset=['lotName', 'waferIndex'], keep=False)
@@ -303,15 +212,7 @@ def inspect_identifiers(df: pd.DataFrame) -> None:
           f"mean={wafers_per_lot.mean():.1f}, median={wafers_per_lot.median():.1f}")
 
 
-# ----------------------------------------------------------------------
-# A9. DATA QUALITY ISSUES
-#   - Null/missing values in any column
-#   - Degenerate wafer maps (empty, single-value, tiny, extreme aspect ratio)
-#   - Any wafers with more than one defect pattern label
-# ----------------------------------------------------------------------
-
 def inspect_data_quality(df: pd.DataFrame) -> None:
-    """Check for nulls, degenerate wafer maps, and multi-label rows."""
     print("A9. DATA QUALITY ISSUES")
 
     nulls = df.isnull().sum()
@@ -340,18 +241,11 @@ def inspect_data_quality(df: pd.DataFrame) -> None:
     print(f"  Rows with more than one failureType label: {multi_label_mask.sum()}")
 
 
-# ----------------------------------------------------------------------
-# A10. VISUAL SPOT-CHECK
-#   - Plot several random wafer maps from each class to confirm labels
-#     look correct
-# ----------------------------------------------------------------------
-
 def plot_sample_wafer_maps(
     df: pd.DataFrame,
     n_per_class: int = 5,
     save_path: str = "sample_wafer_maps.png",
 ) -> None:
-    """Plot n_per_class random wafer maps for each failureType class."""
     print("A10. VISUAL SPOT-CHECK")
 
     labels = df['failureType'].apply(_extract_nested_string)
@@ -384,19 +278,7 @@ def plot_sample_wafer_maps(
     print(f"  Saved sample grid ({len(classes)} classes x {n_per_class} wafers) to '{save_path}'")
 
 
-# ======================================================================
-# SECTION B — ACTIONS TO PERFORM ON THE DATA
-# (B1 / load_data() is defined above, near the top of the file)
-# ======================================================================
-
-# ----------------------------------------------------------------------
-# B2. EXTRACT / UNWRAP LABELS
-#   - Unwrap nested-array failureType and trainTestLabel into plain
-#     Python strings
-# ----------------------------------------------------------------------
-
 def unwrap_labels(df: pd.DataFrame) -> pd.DataFrame:
-    """Return a copy of df with failureType/trainTestLabel as plain strings."""
     df = df.copy()
     df['failureType'] = df['failureType'].apply(_extract_nested_string)
     tt_col = 'trianTestLabel' if 'trianTestLabel' in df.columns else 'trainTestLabel'
@@ -404,49 +286,23 @@ def unwrap_labels(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-# ----------------------------------------------------------------------
-# B3. FILTER TO LABELED SUBSET
-#   - Keep only rows with a real failureType
-# ----------------------------------------------------------------------
-
 def filter_labeled_subset(df: pd.DataFrame) -> pd.DataFrame:
-    """Return only rows that have a non-empty failureType label.
-    Expects df['failureType'] to already be unwrapped to plain strings/NaN
-    (i.e. run this after unwrap_labels())."""
+    # expects df['failureType'] already unwrapped by unwrap_labels()
     return df[df['failureType'].notna()].reset_index(drop=True)
 
 
-# ----------------------------------------------------------------------
-# B4. SELECT TARGET CLASSES
-#   - Keep only rows whose failureType is one of the chosen 5-6 classes
-# ----------------------------------------------------------------------
-
 def select_target_classes(df: pd.DataFrame, target_classes: list) -> pd.DataFrame:
-    """Return only rows whose failureType is in target_classes."""
     return df[df['failureType'].isin(target_classes)].reset_index(drop=True)
 
 
-# ----------------------------------------------------------------------
-# B5. REMOVE DUPLICATES
-#   - Drop duplicate (lotName, waferIndex) rows if found in A8
-# ----------------------------------------------------------------------
-
 def remove_duplicates(df: pd.DataFrame) -> pd.DataFrame:
-    """Drop duplicate (lotName, waferIndex) rows."""
     before = len(df)
     df = df.drop_duplicates(subset=['lotName', 'waferIndex']).reset_index(drop=True)
     print(f"  Removed {before - len(df)} duplicate rows ({before} -> {len(df)})")
     return df
 
 
-# ----------------------------------------------------------------------
-# B6. REMOVE DEGENERATE / CORRUPT MAPS
-#   - Drop wafer maps identified as degenerate/corrupt in A9
-# ----------------------------------------------------------------------
-
 def remove_degenerate_maps(df: pd.DataFrame) -> pd.DataFrame:
-    """Drop rows with degenerate/corrupt wafer maps."""
-
     def is_degenerate(wafer_map: np.ndarray) -> bool:
         h, w = wafer_map.shape
         if h < 5 or w < 5:
@@ -462,19 +318,12 @@ def remove_degenerate_maps(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-# ----------------------------------------------------------------------
-# B7. HANDLE CLASS IMBALANCE (SIZE REDUCTION STAGE)
-#   - Undersample majority class(es) to a manageable count
-#   - Keep most/all samples of rarer target classes
-# ----------------------------------------------------------------------
-
 def undersample_majority_classes(
     df: pd.DataFrame,
     max_per_class: int,
     random_state: int = 42,
 ) -> pd.DataFrame:
-    """Cap each class at max_per_class rows (random sampling); classes with
-    fewer rows than the cap are kept in full."""
+    # caps each class at max_per_class rows, classes below the cap are kept in full
     parts = []
     for cls, group in df.groupby('failureType'):
         if len(group) > max_per_class:
@@ -487,18 +336,11 @@ def undersample_majority_classes(
     return result
 
 
-# ----------------------------------------------------------------------
-# B8. RESIZE / STANDARDIZE IMAGE DIMENSIONS
-#   - Resize or pad every wafer map to one fixed size (e.g. 32x32, 64x64)
-# ----------------------------------------------------------------------
-
 def resize_wafer_map(wafer_map: np.ndarray, target_size: tuple) -> np.ndarray:
-    """Resize a single wafer map array to target_size (H, W) using
-    nearest-neighbor sampling. Nearest-neighbor is used (rather than
-    bilinear/bicubic) because wafer map values are categorical
-    (0=background, 1=normal, 2=defective), not continuous pixel
-    intensities — interpolating between them would invent new, meaningless
-    values."""
+    # nearest-neighbor rather than bilinear/bicubic, since wafer map values
+    # are categorical (0=background, 1=normal, 2=defective), not continuous
+    # pixel intensities, so interpolating between them would invent values
+    # that don't mean anything
     target_h, target_w = target_size
     src_h, src_w = wafer_map.shape
 
@@ -508,40 +350,21 @@ def resize_wafer_map(wafer_map: np.ndarray, target_size: tuple) -> np.ndarray:
     return wafer_map[row_idx][:, col_idx]
 
 
-# ----------------------------------------------------------------------
-# B9. ENCODE / NORMALIZE PIXEL VALUES
-#   - Normalize to [0,1] and/or one-hot/channel-encode
-#     (background / normal / defective)
-# ----------------------------------------------------------------------
-
 def encode_pixel_values(wafer_map: np.ndarray) -> np.ndarray:
-    """Convert a categorical wafer map (values 0/1/2) into a 3-channel
-    one-hot encoded array of shape (H, W, 3): channel 0 = background,
-    channel 1 = normal die, channel 2 = defective die."""
+    # categorical wafer map (0/1/2) -> 3-channel one-hot: background, normal, defective
     wafer_map = wafer_map.astype(int)
     channels = [(wafer_map == v).astype(np.float32) for v in (0, 1, 2)]
     return np.stack(channels, axis=-1)
 
 
-# ----------------------------------------------------------------------
-# B10. ENCODE LABELS
-#   - Convert string class labels to integer or one-hot encoded targets
-# ----------------------------------------------------------------------
-
 def encode_labels(labels: pd.Series):
-    """Encode string class labels as integers and one-hot vectors.
-    Returns (integer_labels, one_hot_labels, class_names)."""
+    # returns (integer_labels, one_hot_labels, class_names)
     encoder = LabelEncoder()
     integer_labels = encoder.fit_transform(labels)
     n_classes = len(encoder.classes_)
     one_hot_labels = np.eye(n_classes, dtype=np.float32)[integer_labels]
     return integer_labels, one_hot_labels, encoder.classes_.tolist()
 
-
-# ----------------------------------------------------------------------
-# B11. SPLIT THE DATA
-#   - Stratified train / validation / test split
-# ----------------------------------------------------------------------
 
 def split_data(
     X: np.ndarray,
@@ -551,9 +374,7 @@ def split_data(
     test_size: float = 0.15,
     random_state: int = 42,
 ):
-    """Stratified split of X/y into train/val/test sets. y should be the
-    integer (not one-hot) labels for stratify to work; pass the one-hot
-    array through separately if you need it, or index both the same way."""
+    # y needs to be the integer (not one-hot) labels for stratify to work
     assert abs(train_size + val_size + test_size - 1.0) < 1e-6, \
         "train_size + val_size + test_size must sum to 1.0"
 
@@ -574,32 +395,15 @@ def split_data(
     return X_train, X_val, X_test, y_train, y_val, y_test
 
 
-# ----------------------------------------------------------------------
-# B12. SAVE THE CLEANED DATASET
-#   - Save cleaned/resized/encoded arrays to disk (e.g. .npz)
-# ----------------------------------------------------------------------
-
 def save_dataset(output_path: str, **arrays) -> None:
-    """Save processed arrays (e.g. X_train, y_train, X_val, ...) to disk as
-    a single compressed .npz file. Reload with:
-        data = np.load(output_path, allow_pickle=True)
-        X_train = data['X_train']
-    """
+    # saves e.g. X_train, y_train, X_val, ... as one compressed .npz file,
+    # reload with data = np.load(output_path, allow_pickle=True)
     np.savez_compressed(output_path, **arrays)
     size_mb = os.path.getsize(output_path) / (1024 ** 2)
     print(f"  Saved arrays {list(arrays.keys())} to '{output_path}' ({size_mb:.1f} MB)")
 
 
-# ----------------------------------------------------------------------
-# B13. DOCUMENT EVERYTHING
-#   - Record counts, ratios, and decisions made above for the
-#     Dataset Summary write-up
-# ----------------------------------------------------------------------
-
 def document_summary(output_path: str = "dataset_summary.txt", **kwargs) -> None:
-    """Write out key counts/ratios/decisions for the Dataset Summary
-    write-up. Pass whatever facts you want recorded as keyword arguments,
-    e.g. document_summary(source=..., total_wafers=..., ...)."""
     with open(output_path, "w", encoding="utf-8") as f:
         f.write("WM-811K WAFER MAP — DATASET SUMMARY\n")
         f.write("=" * 60 + "\n\n")
@@ -609,13 +413,7 @@ def document_summary(output_path: str = "dataset_summary.txt", **kwargs) -> None
     print(f"  Wrote dataset summary to '{output_path}'")
 
 
-# ----------------------------------------------------------------------
-# Domain background used by the report: a short physical description of
-# each WM-811K failure-pattern class. Static domain knowledge (not derived
-# from the data), kept separate so it's easy to edit independently of the
-# numbers computed below.
-# ----------------------------------------------------------------------
-
+# short physical description of each WM-811K failure pattern, used in the report
 CLASS_DESCRIPTIONS = {
     'Center': (
         "defective dies concentrated in the central region of the wafer, "
@@ -663,15 +461,6 @@ CLASS_DESCRIPTIONS = {
 }
 
 
-# ----------------------------------------------------------------------
-# REPORT GENERATION — formal "Dataset Summary" report section
-#   Builds the write-up prose FROM the config constants and computed
-#   statistics passed in, rather than hardcoding numbers. Re-running the
-#   script after changing TARGET_CLASSES / TARGET_IMAGE_SIZE /
-#   MAX_PER_CLASS / the split ratios regenerates a report that matches
-#   the new configuration automatically.
-# ----------------------------------------------------------------------
-
 def generate_report(
     df_raw: pd.DataFrame,
     df_cleaned: pd.DataFrame,
@@ -683,16 +472,9 @@ def generate_report(
     split_sizes: tuple,
     output_path: str = "Phase1_Dataset_Summary_Report.txt",
 ) -> None:
-    """
-    Generate a formal, scientific-style "Dataset Summary" report section
-    for the Phase 1 write-up. All figures that depend on the pipeline
-    configuration (target_classes, target_image_size, max_per_class,
-    split_ratios) are computed from the arguments at call time, so the
-    text stays accurate if those constants change and the script is
-    re-run — nothing about the configuration is hand-typed below. Only
-    plain headings and paragraphs are used, with tables reserved for
-    tabular data.
-    """
+    # builds the write-up prose from the config constants and computed stats
+    # passed in, so re-running after changing TARGET_CLASSES / TARGET_IMAGE_SIZE /
+    # MAX_PER_CLASS / the split ratios regenerates a report that matches
     n_total_raw = len(df_raw)
     labeled_mask = df_raw['failureType'].apply(lambda c: np.asarray(c).size > 0)
     n_labeled = int(labeled_mask.sum())
@@ -748,7 +530,6 @@ def generate_report(
     report.append("=" * 72)
     report.append("")
 
-    # ------------------------------------------------------------------
     report.append("1. INTRODUCTION")
     report.append("-" * 72)
     report.append(wrap_para(
@@ -765,7 +546,6 @@ def generate_report(
     ))
     report.append("")
 
-    # ------------------------------------------------------------------
     report.append("2. BACKGROUND")
     report.append("-" * 72)
     report.append(wrap_para(
@@ -798,7 +578,6 @@ def generate_report(
     ))
     report.append("")
 
-    # ------------------------------------------------------------------
     report.append("3. DATA SOURCE")
     report.append("-" * 72)
     report.append(wrap_para(
@@ -832,7 +611,6 @@ def generate_report(
     ))
     report.append("")
 
-    # ------------------------------------------------------------------
     report.append("4. RAW DATASET STRUCTURE AND SIZE")
     report.append("-" * 72)
     report.append(wrap_para(
@@ -875,7 +653,6 @@ def generate_report(
     ))
     report.append("")
 
-    # ------------------------------------------------------------------
     report.append("5. CLASS DISTRIBUTION AND IMBALANCE (RAW LABELED SUBSET)")
     report.append("-" * 72)
     report.append(wrap_para(
@@ -911,7 +688,6 @@ def generate_report(
         report.append(wrap_para(f"  - {cls}: {desc}."))
     report.append("")
 
-    # ------------------------------------------------------------------
     report.append("6. DATA QUALITY ASSESSMENT")
     report.append("-" * 72)
     dup_mask = df_raw.duplicated(subset=['lotName', 'waferIndex'], keep=False)
@@ -945,7 +721,6 @@ def generate_report(
     ))
     report.append("")
 
-    # ------------------------------------------------------------------
     report.append("7. PREPROCESSING PIPELINE")
     report.append("-" * 72)
     report.append(wrap_para(
@@ -1050,7 +825,6 @@ def generate_report(
     ))
     report.append("")
 
-    # ------------------------------------------------------------------
     report.append("8. RESULTING PROCESSED DATASET")
     report.append("-" * 72)
     report.append(wrap_para(
@@ -1091,7 +865,6 @@ def generate_report(
     ))
     report.append("")
 
-    # ------------------------------------------------------------------
     report.append("9. REPRODUCIBILITY NOTE")
     report.append("-" * 72)
     report.append(wrap_para(
@@ -1115,13 +888,9 @@ def generate_report(
     print(f"  Wrote scientific report section to '{output_path}'")
 
 
-# ======================================================================
-# MAIN
-# ======================================================================
-
-# Config for the Section B pipeline — adjust as your team finalizes scope.
-# generate_report() reads these back out (via the arguments passed to it
-# below) so the written report always matches whatever is set here.
+# pipeline config, adjust as scope changes. generate_report() reads these back
+# out via the arguments passed to it below, so the written report always
+# matches whatever is set here
 TARGET_CLASSES = ['Center', 'Donut', 'Edge-Loc', 'Edge-Ring', 'Loc', 'Scratch']
 TARGET_IMAGE_SIZE = (32, 32)
 MAX_PER_CLASS = 2000
@@ -1130,6 +899,9 @@ VAL_SIZE = 0.15
 TEST_SIZE = 0.15
 
 if __name__ == "__main__":
+    PROCESSED_DATA_DIR.mkdir(parents=True, exist_ok=True)
+    RESULTS_DIR.mkdir(parents=True, exist_ok=True)
+
     with open(RESULTS_PATH, "w", encoding="utf-8") as results_file:
         tee = _Tee(sys.stdout, results_file)
         with contextlib.redirect_stdout(tee):
@@ -1148,7 +920,7 @@ if __name__ == "__main__":
             inspect_die_size_field(df)
             inspect_identifiers(df)
             inspect_data_quality(df)
-            plot_sample_wafer_maps(df)
+            plot_sample_wafer_maps(df, save_path=str(RESULTS_DIR / "sample_wafer_maps.png"))
 
             print("\n" + "=" * 70)
             print("SECTION B — CLEANING & PREPROCESSING PIPELINE")
@@ -1190,7 +962,7 @@ if __name__ == "__main__":
 
             print("\nB12. Saving processed dataset...")
             save_dataset(
-                "processed_wafer_dataset.npz",
+                str(PROCESSED_DATA_DIR / "processed_wafer_dataset.npz"),
                 X_train=X_train, y_train=y_train,
                 X_val=X_val, y_val=y_val,
                 X_test=X_test, y_test=y_test,
@@ -1199,7 +971,7 @@ if __name__ == "__main__":
 
             print("\nB13. Writing dataset summary...")
             document_summary(
-                "dataset_summary.txt",
+                str(RESULTS_DIR / "dataset_summary.txt"),
                 source="WM-811K Wafer Map Dataset (LSWMD.pkl)",
                 total_wafers_in_file=len(df),
                 labeled_wafers_in_file=int(df['failureType'].apply(lambda c: np.asarray(c).size > 0).sum()),
@@ -1221,6 +993,7 @@ if __name__ == "__main__":
                 max_per_class=MAX_PER_CLASS,
                 split_ratios=(TRAIN_SIZE, VAL_SIZE, TEST_SIZE),
                 split_sizes=(len(X_train), len(X_val), len(X_test)),
+                output_path=str(RESULTS_DIR / "Phase1_Dataset_Summary_Report.txt"),
             )
 
     print(f"\nAll console output above was also written to '{RESULTS_PATH}'")

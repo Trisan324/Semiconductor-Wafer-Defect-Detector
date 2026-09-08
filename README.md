@@ -2,9 +2,9 @@
 
 ## Project Overview
 
-This group project investigates the use of artificial intelligence to classify semiconductor wafer defect patterns. The project will use the WM-811K Wafer Map dataset and a supervised Convolutional Neural Network (CNN).
+This group project uses artificial intelligence to classify semiconductor wafer defect patterns. It uses the WM-811K Wafer Map dataset and a compact Convolutional Neural Network (CNN) built in PyTorch.
 
-To keep the project achievable within the four-week development period, the model will focus on a selected subset of five to six common wafer-map classes.
+The project focuses on six wafer-map classes: Center, Donut, Edge-Loc, Edge-Ring, Loc, and Scratch. A baseline CNN has been trained and evaluated on this subset, and the trained model and results are included in this repository.
 
 ## Project Objective
 
@@ -19,7 +19,9 @@ Dataset sources:
 - [WM-811K Wafer Map dataset](https://www.kaggle.com/datasets/qingyi/wm811k-wafer-map)
 - [Original WM-811K publication](https://doi.org/10.1109/TSM.2014.2364237)
 
-The dataset is not included in this repository because of its size. Each group member must download it separately and place it in the local `data/raw/` directory.
+The raw dataset (`LSWMD.pkl`, about 2 GB) is not included in this repository because of its size. Anyone who needs to rerun preprocessing from scratch should download it from Kaggle and place it in `data/raw/`.
+
+The processed dataset (`data/processed/processed_wafer_dataset.npz`) is included, since it is small and lets anyone run training or evaluation immediately without needing the raw file.
 
 ## Technology Stack
 
@@ -35,24 +37,32 @@ The dataset is not included in this repository because of its size. Each group m
 - Seaborn
 - Git and GitHub
 
-Model training will be performed locally. GPU acceleration will be used where supported, with CPU training available as a fallback. The primary training computer uses an AMD Radeon RX 6600 through PyTorch DirectML.
+Model training was performed locally. GPU acceleration is used where supported, with CPU training available as a fallback. The primary training computer uses an AMD Radeon RX 6600 through PyTorch DirectML.
 
 ## Repository Structure
 
 ```text
 data/
-├── raw/                         Original WM-811K dataset
-└── processed/                   Cleaned and preprocessed data
+├── raw/                            Original WM-811K dataset (not included, download separately)
+└── processed/                      Processed dataset used for training and evaluation
 
-notebooks/                       Data exploration and model experiments
-src/                             Reusable Python source code
-models/                          Saved model files
-results/                         Evaluation results, graphs and confusion matrices
+notebooks/                          Reserved for exploratory work
+src/
+├── data_acquisition_cleaning.py    Builds the processed dataset from the raw WM-811K file
+├── inspect_npz.py                  Prints the arrays, shapes, and dtypes in the processed dataset
+├── check_directml.py               Confirms PyTorch can see the AMD GPU through DirectML
+├── model.py                        CompactCNN architecture
+├── train.py                        Trains the model and saves the best checkpoint and training log
+├── evaluate.py                     Evaluates the trained model on the test set
+└── plot_results.py                 Generates the report figures from the training log and evaluation output
 
-README.md                        Project information and setup instructions
-requirements.txt                 Shared Python dependencies
-requirements-amd-directml.txt    AMD DirectML environment
-.gitignore                       Files excluded from version control
+models/                             Saved model checkpoint
+results/                            Training log, evaluation metrics, confusion matrix, and figures
+
+README.md                           Project information and setup instructions
+requirements.txt                    Shared Python dependencies
+requirements-amd-directml.txt       AMD DirectML environment
+.gitignore                          Files excluded from version control
 ```
 
 ## Environment Setup
@@ -117,3 +127,35 @@ DirectML does not use NVIDIA CUDA. Therefore, `torch.cuda.is_available()` may re
 Members using NVIDIA GPUs or other operating systems should install PyTorch using the official installation selector:
 
 - [PyTorch installation selector](https://pytorch.org/get-started/locally/)
+
+## How to Run
+
+Run these from the project root, with the virtual environment activated.
+
+Build the processed dataset from the raw WM-811K file. Skip this step if you are using the processed dataset already included in the repository.
+
+```powershell
+python src/data_acquisition_cleaning.py
+```
+
+Train the model. Saves the best checkpoint to `models/compact_cnn_best.pt` and the training log to `results/training_log.csv`.
+
+```powershell
+python src/train.py
+```
+
+Evaluate the trained model on the test set. Saves accuracy, per-class precision, recall, F1-score, and the confusion matrix to `results/`.
+
+```powershell
+python src/evaluate.py
+```
+
+Generate the report figures from the training log and evaluation output. Saves to `results/figures/`.
+
+```powershell
+python src/plot_results.py
+```
+
+## Results
+
+The baseline CompactCNN reached 86.66% validation accuracy during training. On the held-out test set it achieved 85.71% accuracy and 85.21% macro-F1 across the six classes. Full per-class metrics and the confusion matrix are in `results/evaluation_metrics.csv` and `results/confusion_matrix.csv`.

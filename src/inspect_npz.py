@@ -1,6 +1,7 @@
 import numpy as np
 
-NPZ_PATH = "data/processed/processed_wafer_dataset.npz"  # adjust if needed
+from pathlib import Path
+NPZ_PATH = Path(__file__).resolve().parent.parent / "data" / "processed" / "processed_wafer_dataset.npz"
 
 data = np.load(NPZ_PATH, allow_pickle=True)
 
