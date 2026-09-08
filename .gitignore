@@ -15,13 +15,19 @@ __pycache__/
 
 # Dataset files
 data/raw/*
+!data/raw/.gitkeep
+
 data/processed/*
+!data/processed/.gitkeep
+!data/processed/processed_wafer_dataset.npz
+
 *.pkl
 
 # Trained model files
 *.pt
 *.pth
 *.joblib
+!models/compact_cnn_best.pt
 
 # Operating-system files
 .DS_Store
