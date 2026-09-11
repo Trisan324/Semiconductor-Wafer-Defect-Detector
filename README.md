@@ -35,6 +35,7 @@ The processed dataset (`data/processed/processed_wafer_dataset.npz`) is included
 - OpenCV
 - Matplotlib
 - Seaborn
+- Streamlit
 - Git and GitHub
 
 Model training was performed locally. GPU acceleration is used where supported, with CPU training available as a fallback. The primary training computer uses an AMD Radeon RX 6600 through PyTorch DirectML.
@@ -54,7 +55,8 @@ src/
 ├── model.py                        CompactCNN architecture
 ├── train.py                        Trains the model and saves the best checkpoint and training log
 ├── evaluate.py                     Evaluates the trained model on the test set
-└── plot_results.py                 Generates the report figures from the training log and evaluation output
+├── plot_results.py                 Generates the report figures from the training log and evaluation output
+└── app.py                          Streamlit prototype for interactively classifying test wafer maps
 
 models/                             Saved model checkpoint
 results/                            Training log, evaluation metrics, confusion matrix, and figures
@@ -154,6 +156,12 @@ Generate the report figures from the training log and evaluation output. Saves t
 
 ```powershell
 python src/plot_results.py
+```
+
+Run the prototype. Opens a Streamlit web interface for stepping through test wafer maps and viewing the model's predictions.
+
+```powershell
+streamlit run src/app.py
 ```
 
 ## Results
